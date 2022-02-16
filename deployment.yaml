@@ -1,0 +1,131 @@
+version: '3'
+
+services:
+  authenticationDB:
+    image: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      timeout: 10s
+      retries: 10
+    ports:
+      - 3307:3306
+    security_opt:
+      - seccomp:unconfined
+    volumes:
+      - authentication_data_storage:/var/lib/mysql
+    networks:
+      - authentication_network
+  authenticationDBMigration:
+    image: authenticationdbmigration
+    environment:
+      - DATABASE_URL=authenticationDB
+    depends_on:
+      - authenticationDB
+#    depends_on:
+#      authenticationDB:
+#        condition: service_healthy
+    networks:
+      - authentication_network
+  authentication:
+    image: authentication
+    environment:
+      - DATABASE_URL=authenticationDB
+    depends_on:
+      - authenticationDBMigration
+    ports:
+      - '5002:5002'
+    networks:
+      - authentication_network
+  electionDB:
+    image: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+    healthcheck:
+      test: [ 'CMD', 'mysqladmin', 'ping', '-h', 'localhost' ]
+      timeout: 10s
+      retries: 10
+    ports:
+      - 3306:3306
+    security_opt:
+      - seccomp:unconfined
+    volumes:
+      - election_data_storage:/var/lib/mysql
+    networks:
+      - election_network
+      - admin_network
+  electionDBMigration:
+    image: electiondbmigration
+    environment:
+      - DATABASE_URL=electionDB
+    depends_on:
+      - electionDB
+#    depends_on:
+#      electionDB:
+#        condition: service_healthy
+    networks:
+      - election_network
+  admin:
+    image: admin
+    environment:
+      - DATABASE_URL=electionDB
+    depends_on:
+      - electionDBMigration
+    ports:
+      - '5000:5000'
+    networks:
+      - admin_network
+    volumes:
+      - ./applications/admin/:/opt/src/applications/admin
+      - ./applications/:/opt/src/applications
+  daemon:
+    image: daemon
+    environment:
+      - DATABASE_URL=electionDB
+      - REDIS_URI=redis
+    depends_on:
+      - electionDBMigration
+    networks:
+      - election_network
+      - redis_network
+  official:
+    image: official
+    depends_on:
+      - redis
+    environment:
+      - REDIS_URI=redis
+    deploy:
+      replicas: 3
+    ports:
+      - '5001:5001'
+    networks:
+      - vote_network
+  redis:
+    image: redis
+    ports:
+      - 6379:6379
+    networks:
+      - vote_network
+      - redis_network
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8080:8080
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+    networks:
+      - authentication_network
+      - election_network
+
+volumes:
+  election_data_storage:
+  authentication_data_storage:
+
+networks:
+  admin_network:
+  authentication_network:
+  election_network:
+  vote_network:
+  redis_network:

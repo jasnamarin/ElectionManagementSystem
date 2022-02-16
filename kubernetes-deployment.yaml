@@ -1,0 +1,161 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: localpv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/run/desktop/mnt/host/c/Users/jasna/PyCharmProjects/IEP/kubernetes/mysql"
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: authentication-db-pvc
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 3Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: authentication-db-secret
+type: Opaque
+data:
+  password: cm9vdA==
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authentication-db-deployment
+  labels:
+    #authentication-network: "true"
+    app: authentication-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authentication-db
+  template:
+    metadata:
+      labels:
+        app: authentication-db
+    spec:
+      volumes:
+        - name: authentication-db-storage
+          persistentVolumeClaim:
+            claimName: authentication-db-pvc
+      containers:
+        - name: authentication-db
+          image: mysql
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: authentication-db-secret
+                  key: password
+          volumeMounts:
+            - mountPath: "/var/lib/mysql"
+              name: authentication-db-storage
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authentication-db-service
+spec:
+  selector:
+    app: authentication-db
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authentication-db-configmap
+data:
+  authentication-db-url: authentication-db-service
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: authentication-db-migration
+spec:
+  containers:
+    - name: authenticationdbmigration
+      image: 192.168.65.4:5000/authenticationdbmigration
+      env:
+        - name: DATABASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: authentication-db-configmap
+              key: authentication-db-url
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authentication-deployment
+  labels:
+    #authentication-network: "true"
+    app: authentication
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: authentication
+  template:
+    metadata:
+      labels:
+        app: authentication
+    spec:
+      containers:
+        - name: authentication
+          image: 192.168.65.4:5000/authentication
+          ports:
+            - containerPort: 5002
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: authentication-db-configmap
+                  key: authentication-db-url
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authentication-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: authentication
+  ports:
+    - protocol: TCP
+      port: 5002
+      targetPort: 5002
+#---
+#apiVersion: networking.k8s.io/v1
+#kind: NetworkPolicy
+#metadata:
+#  name: authentication-network
+#spec:
+#  ingress:
+#    - from:
+#        - podSelector:
+#            matchLabels:
+#              authentication-network: "true"
+#  podSelector:
+#    matchLabels:
+#      authentication-network: "true"

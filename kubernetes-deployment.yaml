@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: localpv
+  name: localpvauthentication
   labels:
     type: local
 spec:
@@ -11,7 +11,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   hostPath:
-    path: "/run/desktop/mnt/host/c/Users/jasna/PyCharmProjects/IEP/kubernetes/mysql"
+    path: "/run/desktop/mnt/host/c/Users/jasna/PyCharmProjects/IEP/kubernetes/authentication/mysql"
     type: DirectoryOrCreate
 ---
 apiVersion: v1
@@ -22,6 +22,7 @@ spec:
   storageClassName: manual
   accessModes:
     - ReadWriteOnce
+  volumeName: localpvauthentication
   resources:
     requests:
       storage: 3Gi
@@ -39,7 +40,7 @@ kind: Deployment
 metadata:
   name: authentication-db-deployment
   labels:
-    #authentication-network: "true"
+    authentication-network: "true"
     app: authentication-db
 spec:
   replicas: 1
@@ -109,7 +110,7 @@ kind: Deployment
 metadata:
   name: authentication-deployment
   labels:
-    #authentication-network: "true"
+    authentication-network: "true"
     app: authentication
 spec:
   replicas: 2
@@ -145,17 +146,124 @@ spec:
     - protocol: TCP
       port: 5002
       targetPort: 5002
-#---
-#apiVersion: networking.k8s.io/v1
-#kind: NetworkPolicy
-#metadata:
-#  name: authentication-network
-#spec:
-#  ingress:
-#    - from:
-#        - podSelector:
-#            matchLabels:
-#              authentication-network: "true"
-#  podSelector:
-#    matchLabels:
-#      authentication-network: "true"
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: authentication-network
+spec:
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              authentication-network: "true"
+  podSelector:
+    matchLabels:
+      authentication-network: "true"
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: localpvelection
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/run/desktop/mnt/host/c/Users/jasna/PyCharmProjects/IEP/kubernetes/election/mysql"
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: election-db-pvc
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  volumeName: localpvelection
+  resources:
+    requests:
+      storage: 3Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: election-db-secret
+type: Opaque
+data:
+  password: cm9vdA==
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: election-db-deployment
+  labels:
+    app: election-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: election-db
+  template:
+    metadata:
+      labels:
+        app: election-db
+    spec:
+      volumes:
+        - name: election-db-storage
+          persistentVolumeClaim:
+            claimName: election-db-pvc
+      containers:
+        - name: election-db
+          image: mysql
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: election-db-secret
+                  key: password
+          volumeMounts:
+            - mountPath: "/var/lib/mysql"
+              name: election-db-storage
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: election-db-service
+spec:
+  selector:
+    app: election-db
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: election-db-configmap
+data:
+  election-db-url: election-db-service
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: election-db-migration
+spec:
+  containers:
+    - name: electiondbmigration
+      image: electiondbmigration
+      imagePullPolicy: IfNotPresent
+      env:
+        - name: DATABASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: election-db-configmap
+              key: election-db-url

@@ -279,11 +279,11 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: adminer
   labels:
     app: adminer-deployment
     authentication-network: "true"
     election-network: "true"
-  name: adminer
 spec:
   replicas: 1
   selector:
@@ -295,6 +295,10 @@ spec:
         app: adminer
     spec:
       containers:
+        - name: adminer
+          image: adminer
+          ports:
+            - containerPort: 8080
           env:
             - name: MYSQL_ROOT_PASSWORD
               valueFrom:
@@ -302,14 +306,10 @@ spec:
                   name: authentication-db-secret
                   key: password
             - name: MYSQL_ROOT_PASSWORD
-                valueFrom:
-                  secretKeyRef:
-                    name: election-db-secret
-                    key: password
-          image: adminer
-          name: adminer
-          ports:
-            - containerPort: 8080
+              valueFrom:
+                secretKeyRef:
+                  name: election-db-secret
+                  key: password
       restartPolicy: Always
 ---
 apiVersion: v1
@@ -447,8 +447,9 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5001
-        - name: REDIS_URI
-          value: redis
+          env:
+            - name: REDIS_URI
+              value: redis
 ---
 apiVersion: v1
 kind: Service
@@ -485,22 +486,14 @@ spec:
         - name: daemon
           image: daemon
           imagePullPolicy: IfNotPresent
-      env:
-        - name: DATABASE_URL
-          valueFrom:
-            configMapKeyRef:
-              name: election-db-configmap
-              key: election-db-url
-        - name: REDIS_URI
-          value: redis
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: daemon-service
-spec:
-  selector:
-    app: daemon
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: election-db-configmap
+                  key: election-db-url
+            - name: REDIS_URI
+              value: redis
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -521,8 +514,8 @@ spec:
         app: redis
     spec:
       containers:
+        - name: redis
           image: redis
-          name: redis
           ports:
             - containerPort: 6379
       restartPolicy: Always

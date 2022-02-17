@@ -125,7 +125,7 @@ def getResults():
     election = Election.query.filter(Election.id == election_id).first()
     if election is None:
         message = 'Election does not exist.'
-    elif datetime.now() + timedelta(seconds=3) < election.end:
+    elif datetime.now() < election.end:  # + timedelta(seconds=3)
         message = 'Election is ongoing.'
 
     if message is not None:
